@@ -45,14 +45,25 @@
   },
   "hotkey": {
     "conflicts": "Konflikte mit bestehenden Tastenkombinationen",
+    "errors": {
+      "CONFLICT": "Tastenkonflikt: Diese Tastenkombination wird bereits von einer anderen Funktion verwendet",
+      "INVALID_FORMAT": "Ungültiges Tastenkürzel-Format: Bitte verwenden Sie das korrekte Format (z. B. CommandOrControl+E)",
+      "INVALID_ID": "Ungültige Tastenkürzel-ID",
+      "NO_MODIFIER": "Das Tastenkürzel muss einen Modifikatortaste enthalten (Strg, Alt, Shift usw.)",
+      "SYSTEM_OCCUPIED": "Das Tastenkürzel wird vom System oder einer anderen Anwendung verwendet",
+      "UNKNOWN": "Aktualisierung fehlgeschlagen: Unbekannter Fehler"
+    },
     "group": {
       "conversation": "Gespräch",
+      "desktop": "Desktop",
       "essential": "Grundlegend"
     },
     "invalidCombination": "Die Tastenkombination muss mindestens einen Modifikatortaste (Strg, Alt, Umschalt) und eine normale Taste enthalten",
     "record": "Drücken Sie eine Taste, um die Tastenkombination aufzuzeichnen",
     "reset": "Auf die Standard-Tastenkombination zurücksetzen",
-    "title": "Tastenkombinationen"
+    "title": "Tastenkombinationen",
+    "updateError": "Tastenkürzel-Aktualisierung fehlgeschlagen: Netzwerk- oder Systemfehler",
+    "updateSuccess": "Tastenkürzel erfolgreich aktualisiert"
   },
   "llm": {
     "aesGcm": "Ihr Schlüssel und Ihre Proxy-Adresse werden mit dem <1>AES-GCM</1> Verschlüsselungsalgorithmus verschlüsselt.",
@@ -129,6 +140,7 @@
     "waitingForMore": "Weitere Modelle werden <1>geplant</1>, bitte freuen Sie sich auf weitere Updates"
   },
   "plugin": {
+    "addMCPPlugin": "MCP-Plugin hinzufügen",
     "addTooltip": "Benutzerdefiniertes Plugin",
     "clearDeprecated": "Entfernen Sie ungültige Plugins",
     "empty": "Keine installierten Plugins vorhanden. Besuchen Sie den <1>Plugin-Store</1>, um mehr zu entdecken.",
@@ -171,9 +183,20 @@
     "title": "Assistenteninformationen"
   },
   "settingAppearance": {
+    "animationMode": {
+      "agile": "Agil",
+      "desc": "Wählen Sie die Animationsgeschwindigkeit für die Reaktion der Anwendung",
+      "disabled": "Aus",
+      "elegant": "Elegant",
+      "title": "Reaktionsanimation"
+    },
     "neutralColor": {
       "desc": "Anpassung der Graustufen mit unterschiedlichen Farbneigungen",
       "title": "Neutrale Farben"
+    },
+    "noAnimation": {
+      "desc": "Deaktivieren Sie alle Animationseffekte in der Anwendung",
+      "title": "Kein Animationsmodus"
     },
     "preview": {
       "title": "Farbauswahl"
@@ -214,13 +237,17 @@
       "title": "Historiennachrichten begrenzen",
       "unlimited": "Unbegrenzte Historiennachrichten"
     },
+    "enableStreaming": {
+      "desc": "Aktivieren Sie den Streaming-Ausgang, um Antworten in Echtzeit anzuzeigen. Wenn deaktiviert, wird nur die vollständige Antwort angezeigt.",
+      "title": "Streaming-Ausgabe aktivieren"
+    },
     "historyCount": {
       "desc": "Anzahl der Nachrichten pro Anfrage (einschließlich der neuesten Fragen und Antworten. Jede Frage und Antwort zählt als 1)",
       "title": "Anzahl der mitgelieferten Nachrichten"
     },
     "inputTemplate": {
       "desc": "Die neueste Benutzernachricht wird in dieses Template eingefügt",
-      "placeholder": "Vorlagen-{{input_template}} werden durch Echtzeit-Eingabeinformationen ersetzt",
+      "placeholder": "Vorlagen-{{text}} werden durch Echtzeit-Eingabeinformationen ersetzt",
       "title": "Benutzereingabe-Vorverarbeitung"
     },
     "submit": "Chat-Präferenzen aktualisieren",
@@ -240,7 +267,19 @@
     "mermaidTheme": {
       "title": "Mermaid-Thema"
     },
-    "title": "Chatdesign"
+    "title": "Chatdesign",
+    "transitionMode": {
+      "desc": "Übergangsanimation der Chatnachrichten",
+      "options": {
+        "fadeIn": "Einblenden",
+        "none": {
+          "desc": "Dies hängt von der Art der Antwort des Modells ab, bitte testen Sie es selbst.",
+          "value": "Keine"
+        },
+        "smooth": "Sanft"
+      },
+      "title": "Übergangsanimation"
+    }
   },
   "settingCommon": {
     "lang": {
@@ -254,6 +293,13 @@
       "title": "Thema"
     },
     "title": "Allgemeine Einstellungen"
+  },
+  "settingImage": {
+    "defaultCount": {
+      "desc": "Legen Sie die Standardanzahl der Bilder fest, die beim Erstellen einer neuen Aufgabe im Bildgenerierungs-Panel erzeugt werden.",
+      "label": "Standardanzahl der Bilder",
+      "title": "AI-Zeichnungseinstellungen"
+    }
   },
   "settingModel": {
     "enableMaxTokens": {
@@ -471,6 +517,11 @@
       "placeholder": "Bitte benutzerdefinierte Eingabe eingeben",
       "title": "Benutzerdefinierte Eingabe"
     },
+    "generationTopic": {
+      "label": "Modell zur Benennung von KI-Malthemen",
+      "modelDesc": "Modell zur automatischen Benennung von Themen für KI-Malerei",
+      "title": "Automatische Benennung von KI-Malthemen"
+    },
     "helpInfo": "Beim Erstellen eines neuen Assistenten werden die Standardassistenteneinstellungen als Voreinstellungen verwendet.",
     "historyCompress": {
       "label": "Gesprächshistorienmodell",
@@ -505,8 +556,10 @@
     "common": "Allgemeine Einstellungen",
     "experiment": "Experiment",
     "hotkey": "Tastenkombinationen",
+    "image": "AI-Zeichnung",
     "llm": "Sprachmodell",
     "provider": "KI-Dienstanbieter",
+    "proxy": "Netzwerkproxy",
     "storage": "Datenspeicher",
     "sync": "Cloud-Synchronisierung",
     "system-agent": "Systemassistent",

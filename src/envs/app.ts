@@ -25,14 +25,13 @@ if (typeof window === 'undefined' && isServerMode && !APP_URL) {
 
 const ASSISTANT_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public';
 
-const PLUGINS_INDEX_URL = 'https://chat-plugins.lobehub.com';
+const PLUGINS_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public';
 
 export const getAppConfig = () => {
   const ACCESS_CODES = process.env.ACCESS_CODE?.split(',').filter(Boolean) || [];
 
   return createEnv({
     client: {
-      NEXT_PUBLIC_BASE_PATH: z.string(),
       NEXT_PUBLIC_ENABLE_SENTRY: z.boolean(),
     },
     server: {
@@ -59,8 +58,6 @@ export const getAppConfig = () => {
       SSRF_ALLOW_IP_ADDRESS_LIST: z.string().optional(),
     },
     runtimeEnv: {
-      NEXT_PUBLIC_BASE_PATH: process.env.NEXT_PUBLIC_BASE_PATH || '',
-
       // Sentry
       NEXT_PUBLIC_ENABLE_SENTRY: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
 

@@ -1,31 +1,32 @@
 /* eslint-disable sort-keys-fix/sort-keys-fix, typescript-sort-keys/interface */
 // Disable the auto sort key eslint rule to make the code more logic and readable
+import {
+  ChatErrorType,
+  ChatImageItem,
+  ChatMessage,
+  ChatMessageError,
+  ChatMessagePluginError,
+  CreateMessageParams,
+  GroundingSearch,
+  MessageMetadata,
+  MessageToolCall,
+  ModelReasoning,
+  TraceEventPayloads,
+  TraceEventType,
+  UpdateMessageRAGParams,
+} from '@lobechat/types';
 import { copyToClipboard } from '@lobehub/ui';
 import isEqual from 'fast-deep-equal';
 import { SWRResponse, mutate } from 'swr';
 import { StateCreator } from 'zustand/vanilla';
 
-import { TraceEventType } from '@/const/trace';
 import { useClientDataSWR } from '@/libs/swr';
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
 import { traceService } from '@/services/trace';
 import { ChatStore } from '@/store/chat/store';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
-import { ChatErrorType } from '@/types/fetch';
-import {
-  ChatMessage,
-  ChatMessageError,
-  ChatMessagePluginError,
-  CreateMessageParams,
-  MessageMetadata,
-  MessageToolCall,
-  ModelReasoning,
-} from '@/types/message';
-import { ChatImageItem } from '@/types/message/image';
-import { GroundingSearch } from '@/types/search';
-import { TraceEventPayloads } from '@/types/trace';
-import { setNamespace } from '@/utils/storeDebug';
+import { Action, setNamespace } from '@/utils/storeDebug';
 import { nanoid } from '@/utils/uuid';
 
 import type { ChatStoreState } from '../../initialState';
@@ -40,6 +41,7 @@ const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
 export interface ChatMessageAction {
   // create
   addAIMessage: () => Promise<void>;
+  addUserMessage: (params: { message: string; fileList?: string[] }) => Promise<void>;
   // delete
   /**
    * clear message on the active session
@@ -60,16 +62,20 @@ export interface ChatMessageAction {
   ) => SWRResponse<ChatMessage[]>;
   copyMessage: (id: string, content: string) => Promise<void>;
   refreshMessages: () => Promise<void>;
-
+  replaceMessages: (messages: ChatMessage[]) => void;
   // =========  ↓ Internal Method ↓  ========== //
   // ========================================== //
   // ========================================== //
+  internal_updateMessageRAG: (id: string, input: UpdateMessageRAGParams) => Promise<void>;
 
   /**
    * update message at the frontend
    * this method will not update messages to database
    */
-  internal_dispatchMessage: (payload: MessageDispatch) => void;
+  internal_dispatchMessage: (
+    payload: MessageDispatch,
+    context?: { topicId?: string | null; sessionId: string },
+  ) => void;
 
   /**
    * update the message content with optimistic update
@@ -130,7 +136,7 @@ export interface ChatMessageAction {
     key: keyof ChatStoreState,
     loading: boolean,
     id?: string,
-    action?: string,
+    action?: Action,
   ) => AbortController | undefined;
 }
 
@@ -214,6 +220,21 @@ export const chatMessage: StateCreator<
 
     updateInputMessage('');
   },
+  addUserMessage: async ({ message, fileList }) => {
+    const { internal_createMessage, updateInputMessage, activeTopicId, activeId } = get();
+    if (!activeId) return;
+
+    await internal_createMessage({
+      content: message,
+      files: fileList,
+      role: 'user',
+      sessionId: activeId,
+      // if there is activeTopicId，then add topicId to message
+      topicId: activeTopicId,
+    });
+
+    updateInputMessage('');
+  },
   copyMessage: async (id, content) => {
     await copyToClipboard(content);
 
@@ -267,16 +288,36 @@ export const chatMessage: StateCreator<
   refreshMessages: async () => {
     await mutate([SWR_USE_FETCH_MESSAGES, get().activeId, get().activeTopicId]);
   },
+  replaceMessages: (messages) => {
+    set(
+      {
+        messagesMap: {
+          ...get().messagesMap,
+          [messageMapKey(get().activeId, get().activeTopicId)]: messages,
+        },
+      },
+      false,
+      'replaceMessages',
+    );
+  },
+
+  internal_updateMessageRAG: async (id, data) => {
+    const { refreshMessages } = get();
+
+    await messageService.updateMessageRAG(id, data);
+    await refreshMessages();
+  },
 
   // the internal process method of the AI message
-  internal_dispatchMessage: (payload) => {
-    const { activeId } = get();
+  internal_dispatchMessage: (payload, context) => {
+    const activeId = typeof context !== 'undefined' ? context.sessionId : get().activeId;
+    const topicId = typeof context !== 'undefined' ? context.topicId : get().activeTopicId;
 
-    if (!activeId) return;
+    const messagesKey = messageMapKey(activeId, topicId);
 
-    const messages = messagesReducer(chatSelectors.activeBaseChats(get()), payload);
+    const messages = messagesReducer(chatSelectors.getBaseChatsByKey(messagesKey)(get()), payload);
 
-    const nextMap = { ...get().messagesMap, [chatSelectors.currentChatKey(get())]: messages };
+    const nextMap = { ...get().messagesMap, [messagesKey]: messages };
 
     if (isEqual(nextMap, get().messagesMap)) return;
 

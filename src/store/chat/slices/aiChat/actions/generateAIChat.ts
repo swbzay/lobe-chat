@@ -1,12 +1,13 @@
 /* eslint-disable sort-keys-fix/sort-keys-fix, typescript-sort-keys/interface */
 // Disable the auto sort key eslint rule to make the code more logic and readable
+import { knowledgeBaseQAPrompts } from '@lobechat/prompts';
+import { TraceEventType, TraceNameMap } from '@lobechat/types';
+import { t } from 'i18next';
 import { produce } from 'immer';
 import { StateCreator } from 'zustand/vanilla';
 
 import { LOADING_FLAT, MESSAGE_CANCEL_FLAT } from '@/const/message';
-import { TraceEventType, TraceNameMap } from '@/const/trace';
-import { isServerMode } from '@/const/version';
-import { knowledgeBaseQAPrompts } from '@/prompts/knowledgeBaseQA';
+import { isDesktop, isServerMode } from '@/const/version';
 import { chatService } from '@/services/chat';
 import { messageService } from '@/services/message';
 import { useAgentStore } from '@/store/agent';
@@ -14,7 +15,6 @@ import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selector
 import { getAgentStoreState } from '@/store/agent/store';
 import { aiModelSelectors, aiProviderSelectors } from '@/store/aiInfra';
 import { getAiInfraStoreState } from '@/store/aiInfra/store';
-import { chatHelpers } from '@/store/chat/helpers';
 import { ChatStore } from '@/store/chat/store';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { getFileStoreState } from '@/store/file/store';
@@ -23,7 +23,7 @@ import { WebBrowsingManifest } from '@/tools/web-browsing';
 import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
 import { ChatImageItem } from '@/types/message/image';
 import { MessageSemanticSearchChunk } from '@/types/rag';
-import { setNamespace } from '@/utils/storeDebug';
+import { Action, setNamespace } from '@/utils/storeDebug';
 
 import { chatSelectors, topicSelectors } from '../../../selectors';
 
@@ -83,6 +83,7 @@ export interface AIGenerateAction {
     provider: string;
   }) => Promise<{
     isFunctionCall: boolean;
+    content: string;
     traceId?: string;
   }>;
   /**
@@ -103,7 +104,12 @@ export interface AIGenerateAction {
   internal_toggleChatLoading: (
     loading: boolean,
     id?: string,
-    action?: string,
+    action?: Action,
+  ) => AbortController | undefined;
+  internal_toggleMessageInToolsCalling: (
+    loading: boolean,
+    id?: string,
+    action?: Action,
   ) => AbortController | undefined;
   /**
    * Controls the streaming state of tool calling processes, updating the UI accordingly
@@ -144,7 +150,13 @@ export const generateAIChat: StateCreator<
   },
 
   sendMessage: async ({ message, files, onlyAddUserMessage, isWelcomeQuestion }) => {
-    const { internal_coreProcessMessage, activeTopicId, activeId, activeThreadId } = get();
+    const {
+      internal_coreProcessMessage,
+      activeTopicId,
+      activeId,
+      activeThreadId,
+      sendMessageInServer,
+    } = get();
     if (!activeId) return;
 
     const fileIdList = files?.map((f) => f.id);
@@ -153,6 +165,10 @@ export const generateAIChat: StateCreator<
 
     // if message is empty or no files, then stop
     if (!message && !hasFile) return;
+
+    // router to server mode send message
+    if (isServerMode)
+      return sendMessageInServer({ message, files, onlyAddUserMessage, isWelcomeQuestion });
 
     set({ isCreatingMessage: true }, false, n('creatingMessage/start'));
 
@@ -183,7 +199,7 @@ export const generateAIChat: StateCreator<
 
       // if there is no activeTopicId and the feature length is greater than the threshold
       // then create a new topic and active it
-      if (!get().activeTopicId && featureLength >= agentConfig.autoCreateTopicThreshold) {
+      if (!activeTopicId && featureLength >= agentConfig.autoCreateTopicThreshold) {
         // we need to create a temp message for optimistic update
         tempMessageId = get().internal_createTmpMessage(newMessage);
         get().internal_toggleMessageLoading(true, tempMessageId);
@@ -258,15 +274,16 @@ export const generateAIChat: StateCreator<
 
       // check activeTopic and then auto update topic title
       if (newTopicId) {
-        const chats = chatSelectors.activeBaseChats(get());
+        const chats = chatSelectors.getBaseChatsByKey(messageMapKey(activeId, newTopicId))(get());
         await get().summaryTopicTitle(newTopicId, chats);
         return;
       }
 
-      const topic = topicSelectors.currentActiveTopic(get());
+      if (!activeTopicId) return;
+      const topic = topicSelectors.getTopicById(activeTopicId)(get());
 
       if (topic && !topic.title) {
-        const chats = chatSelectors.activeBaseChats(get());
+        const chats = chatSelectors.getBaseChatsByKey(messageMapKey(activeId, topic.id))(get());
         await get().summaryTopicTitle(topic.id, chats);
       }
     };
@@ -367,9 +384,13 @@ export const generateAIChat: StateCreator<
       model,
       provider!,
     )(aiInfraStoreState);
+    const isModelBuiltinSearchInternal = aiModelSelectors.isModelBuiltinSearchInternal(
+      model,
+      provider!,
+    )(aiInfraStoreState);
     const useModelBuiltinSearch = agentChatConfigSelectors.useModelBuiltinSearch(agentStoreState);
     const useModelSearch =
-      (isProviderHasBuiltinSearch || isModelHasBuiltinSearch) && useModelBuiltinSearch;
+      ((isProviderHasBuiltinSearch || isModelHasBuiltinSearch) && useModelBuiltinSearch) || isModelBuiltinSearchInternal;
     const isAgentEnableSearch = agentChatConfigSelectors.isAgentEnableSearch(agentStoreState);
 
     if (isAgentEnableSearch && !useModelSearch && !isModelSupportToolUse) {
@@ -381,7 +402,7 @@ export const generateAIChat: StateCreator<
       const abortController = get().internal_toggleChatLoading(
         true,
         assistantId,
-        n('generateMessage(start)', { messageId: assistantId, messages }) as string,
+        n('generateMessage(start)', { messageId: assistantId, messages }),
       );
 
       get().internal_toggleSearchWorkflow(true, assistantId);
@@ -432,7 +453,7 @@ export const generateAIChat: StateCreator<
       get().internal_toggleChatLoading(
         false,
         assistantId,
-        n('generateMessage(start)', { messageId: assistantId, messages }) as string,
+        n('generateMessage(start)', { messageId: assistantId, messages }),
       );
       get().internal_toggleSearchWorkflow(false, assistantId);
 
@@ -441,6 +462,7 @@ export const generateAIChat: StateCreator<
 
       // if it's the function call message, trigger the function method
       if (isToolsCalling) {
+        get().internal_toggleMessageInToolsCalling(true, assistantId);
         await refreshMessages();
         await triggerToolCalls(assistantId, {
           threadId: params?.threadId,
@@ -453,7 +475,7 @@ export const generateAIChat: StateCreator<
     }
 
     // 4. fetch the AI response
-    const { isFunctionCall } = await internal_fetchAIChatMessage({
+    const { isFunctionCall, content } = await internal_fetchAIChatMessage({
       messages,
       messageId: assistantId,
       params,
@@ -463,11 +485,30 @@ export const generateAIChat: StateCreator<
 
     // 5. if it's the function call message, trigger the function method
     if (isFunctionCall) {
+      get().internal_toggleMessageInToolsCalling(true, assistantId);
       await refreshMessages();
       await triggerToolCalls(assistantId, {
         threadId: params?.threadId,
         inPortalThread: params?.inPortalThread,
       });
+    } else {
+      // 显示桌面通知（仅在桌面端且窗口隐藏时）
+      if (isDesktop) {
+        try {
+          // 动态导入桌面通知服务，避免在非桌面端环境中导入
+          const { desktopNotificationService } = await import(
+            '@/services/electron/desktopNotification'
+          );
+
+          await desktopNotificationService.showNotification({
+            body: content,
+            title: t('notification.finishChatGeneration', { ns: 'electron' }),
+          });
+        } catch (error) {
+          // 静默处理错误，不影响正常流程
+          console.error('Desktop notification error:', error);
+        }
+      }
     }
 
     // 6. summary history if context messages is larger than historyCount
@@ -500,7 +541,7 @@ export const generateAIChat: StateCreator<
     const abortController = internal_toggleChatLoading(
       true,
       messageId,
-      n('generateMessage(start)', { messageId, messages }) as string,
+      n('generateMessage(start)', { messageId, messages }),
     );
 
     const agentConfig = agentSelectors.currentAgentConfig(getAgentStoreState());
@@ -509,25 +550,14 @@ export const generateAIChat: StateCreator<
     // ================================== //
     //   messages uniformly preprocess    //
     // ================================== //
-
-    // 1. slice messages with config
-    const historyCount = agentChatConfigSelectors.historyCount(getAgentStoreState());
-    const enableHistoryCount = agentChatConfigSelectors.enableHistoryCount(getAgentStoreState());
-
-    let preprocessMsgs = chatHelpers.getSlicedMessages(messages, {
-      includeNewUserMessage: true,
-      enableHistoryCount,
-      historyCount,
-    });
-
-    // 2. add systemRole
-    if (agentConfig.systemRole) {
-      preprocessMsgs.unshift({ content: agentConfig.systemRole, role: 'system' } as ChatMessage);
-    }
-
-    // 3. handle max_tokens
+    // 4. handle max_tokens
     agentConfig.params.max_tokens = chatConfig.enableMaxTokens
       ? agentConfig.params.max_tokens
+      : undefined;
+
+    // 5. handle reasoning_effort
+    agentConfig.params.reasoning_effort = chatConfig.enableReasoningEffort
+      ? agentConfig.params.reasoning_effort
       : undefined;
 
     let isFunctionCall = false;
@@ -545,7 +575,7 @@ export const generateAIChat: StateCreator<
     await chatService.createAssistantMessageStream({
       abortController,
       params: {
-        messages: preprocessMsgs,
+        messages,
         model,
         provider,
         ...agentConfig.params,
@@ -725,7 +755,7 @@ export const generateAIChat: StateCreator<
 
     internal_toggleChatLoading(false, messageId, n('generateMessage(end)') as string);
 
-    return { isFunctionCall, traceId: msgTraceId };
+    return { isFunctionCall, traceId: msgTraceId, content: output };
   },
 
   internal_resendMessage: async (
@@ -779,6 +809,9 @@ export const generateAIChat: StateCreator<
   // ----- Loading ------- //
   internal_toggleChatLoading: (loading, id, action) => {
     return get().internal_toggleLoadingArrays('chatLoadingIds', loading, id, action);
+  },
+  internal_toggleMessageInToolsCalling: (loading, id) => {
+    return get().internal_toggleLoadingArrays('messageInToolsCallingIds', loading, id);
   },
   internal_toggleChatReasoning: (loading, id, action) => {
     return get().internal_toggleLoadingArrays('reasoningLoadingIds', loading, id, action);
